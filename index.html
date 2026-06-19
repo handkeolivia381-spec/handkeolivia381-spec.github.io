@@ -236,7 +236,7 @@
                     </button>
 
                     <!-- Server Card 2 (Production/Mock) -->
-                    <button class="server-card-btn text-left p-4 bg-gray-950 border border-gray-800 hover:border-indigo-500/50 hover:bg-gray-900/40 rounded-xl transition-all flex justify-between items-center group opacity-85" data-url="https://handkeolivia381-spec-github-io.onrender.com/" data-name="Euclid (US West)">
+                    <button class="server-card-btn text-left p-4 bg-gray-950 border border-gray-800 hover:border-indigo-500/50 hover:bg-gray-900/40 rounded-xl transition-all flex justify-between items-center group opacity-85" data-url="https://handkeolivia381-spec-github-io.onrender.com" data-name="Euclid (US West)">
                         <div class="flex items-center space-x-3.5">
                             <div class="p-2.5 rounded-lg bg-purple-950 text-purple-400 group-hover:bg-purple-900/50 transition-colors">
                                 <i data-lucide="globe" class="w-5 h-5"></i>
@@ -253,7 +253,7 @@
                     </button>
 
                     <!-- Server Card 3 (Production/Mock) -->
-                    <button class="server-card-btn text-left p-4 bg-gray-950 border border-gray-800 hover:border-indigo-500/50 hover:bg-gray-900/40 rounded-xl transition-all flex justify-between items-center group opacity-85" data-url="https://eu.mathland.io" data-name="Hypatia (Europe)">
+                    <button class="server-card-btn text-left p-4 bg-gray-950 border border-gray-800 hover:border-indigo-500/50 hover:bg-gray-900/40 rounded-xl transition-all flex justify-between items-center group opacity-85" data-url="https://handkeolivia381-spec-github-io.onrender.com" data-name="Hypatia (Europe)">
                         <div class="flex items-center space-x-3.5">
                             <div class="p-2.5 rounded-lg bg-emerald-950 text-emerald-400 group-hover:bg-emerald-900/50 transition-colors">
                                 <i data-lucide="swords" class="w-5 h-5"></i>
@@ -525,10 +525,19 @@
                 activeServerName.textContent = serverName;
                 activeServerBadge.classList.remove('hidden');
 
-                // If user is already logged in, update username immediately
+                // Handshake our UID to load our saved level progression authoritative profile
                 const currentUser = auth.currentUser;
                 if (currentUser) {
-                    socket.emit('set_username', { username: currentUser.displayName || `Wizard_${currentUser.uid.substring(0, 4)}` });
+                    socket.emit('player_join', {
+                        uid: currentUser.uid,
+                        username: currentUser.displayName || `Wizard_${currentUser.uid.substring(0, 4)}`
+                    });
+                } else {
+                    // Fail-safe guest fallback
+                    socket.emit('player_join', {
+                        uid: `guest_${Math.random().toString(36).substring(2, 9)}`,
+                        username: `Wandering_Wizard`
+                    });
                 }
             });
 
