@@ -1,7 +1,7 @@
 /**
  * Mathland MMORPG - Part 1 Backend Server
  * File: server.js
- * * An authoritative game server built with Node.js, Express, and Socket.io.
+ * An authoritative game server built with Node.js, Express, and Socket.io.
  * This server tracks player states, manages real-time movement replication,
  * and hosts a secure, server-side math engine to prevent cheating.
  */
@@ -9,6 +9,7 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const { Server } = require('socket.io');
 
 // ==========================================
@@ -16,6 +17,7 @@ const { Server } = require('socket.io');
 // ==========================================
 const PORT = process.env.PORT || 3000;
 const TICK_RATE = 20; // 20 updates per second (50ms interval)
+const DB_FILE = path.join(__dirname, 'players_db.json');
 
 const app = express();
 const server = http.createServer(app);
@@ -45,16 +47,58 @@ const gameState = {
 };
 
 // ==========================================
+// PERSISTENCE STORAGE CONTROLLERS
+// ==========================================
+/**
+ * Reads local player profiles database.
+ */
+function loadPlayerDb() {
+    try {
+        if (fs.existsSync(DB_FILE)) {
+            return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+        }
+    } catch (err) {
+        console.error("[MATHLAND] Error reading database file:", err);
+    }
+    return {};
+}
+
+/**
+ * Commits the database back to local disk.
+ */
+function savePlayerDb(db) {
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+    } catch (err) {
+        console.error("[MATHLAND] Error writing database file:", err);
+    }
+}
+
+/**
+ * Commits an individual player's current progression state.
+ */
+function savePlayerProgress(player) {
+    if (!player || !player.uid) return;
+    const db = loadPlayerDb();
+    db[player.uid] = {
+        username: player.username,
+        x: player.x,
+        y: player.y,
+        hp: player.hp,
+        maxHp: player.maxHp,
+        level: player.level,
+        xp: player.xp,
+        gold: player.gold,
+        zone: player.zone
+    };
+    savePlayerDb(db);
+}
+
+// ==========================================
 // 2. MATH LAND ENGINE (Server-Authoritative)
 // ==========================================
 /**
  * Generates an algebraic equation challenge tailored to player level.
- * Formula structures scale in complexity:
- * Level 1-3: Simple arithmetic (e.g., $a + b = x$)
- * Level 4-7: Single-step algebra (e.g., $ax = b$)
- * Level 8+: Two-step algebra (e.g., $ax + b = c$)
- * * @param {number} level - The level of the player.
- * @returns {Object} { equationText: string, expectedAnswer: number }
  */
 function generateEquation(level) {
     if (level < 4) {
@@ -71,8 +115,7 @@ function generateEquation(level) {
         };
     } else if (level < 8) {
         // Single-step Algebra: ax = b
-        // Designed to avoid fractional division answers
-        const x = Math.floor(Math.random() * 10) + 1; // Integer answer
+        const x = Math.floor(Math.random() * 10) + 1; 
         const a = Math.floor(Math.random() * 8) + 2;
         const b = a * x;
         
@@ -83,7 +126,7 @@ function generateEquation(level) {
         };
     } else {
         // Two-step Algebra: ax + b = c
-        const x = Math.floor(Math.random() * 12) + 1; // Integer answer
+        const x = Math.floor(Math.random() * 12) + 1; 
         const a = Math.floor(Math.random() * 6) + 2;
         const b = Math.floor(Math.random() * 20) + 1;
         const sign = Math.random() > 0.5 ? '+' : '-';
@@ -121,45 +164,60 @@ spawnMonsters();
 // 3. SOCKET.IO MULTIPLAYER HANDLERS
 // ==========================================
 io.on('connection', (socket) => {
-    console.log(`[MATHLAND] Wizard connected: ${socket.id}`);
+    console.log(`[MATHLAND] Connection established: ${socket.id}`);
 
-    // Create default player state
-    gameState.players[socket.id] = {
-        id: socket.id,
-        username: `Apprentice_${socket.id.substring(0, 4)}`,
-        x: 100,
-        y: 100,
-        hp: 100,
-        maxHp: 100,
-        level: 1,
-        xp: 0,
-        gold: 0,
-        zone: "arithmetic_meadow",
-        targetMonsterId: null,
-        activeChallenge: null, // Holds current { equation, answer } verification data
-    };
+    // Wait for the client to authenticate and register UID
+    socket.on('player_join', (data) => {
+        const uid = data.uid || `guest_${socket.id}`;
+        const username = data.username || `Apprentice_${socket.id.substring(0, 4)}`;
 
-    // Send initial handshake data containing everything on the server
-    socket.emit('init', {
-        yourId: socket.id,
-        players: gameState.players,
-        monsters: gameState.monsters
+        const db = loadPlayerDb();
+        const savedProfile = db[uid] || {};
+
+        // Merge loaded stats with defaults
+        gameState.players[socket.id] = {
+            id: socket.id,
+            uid: uid,
+            username: savedProfile.username || username,
+            x: savedProfile.x !== undefined ? savedProfile.x : 100,
+            y: savedProfile.y !== undefined ? savedProfile.y : 100,
+            hp: savedProfile.hp !== undefined ? savedProfile.hp : 100,
+            maxHp: savedProfile.maxHp !== undefined ? savedProfile.maxHp : 100,
+            level: savedProfile.level !== undefined ? savedProfile.level : 1,
+            xp: savedProfile.xp !== undefined ? savedProfile.xp : 0,
+            gold: savedProfile.gold !== undefined ? savedProfile.gold : 0,
+            zone: savedProfile.zone || "arithmetic_meadow",
+            targetMonsterId: null,
+            activeChallenge: null, 
+        };
+
+        const player = gameState.players[socket.id];
+        console.log(`[MATHLAND] Loaded saved profile for ${player.username} (Level ${player.level})`);
+
+        // Send handshake confirmation containing initialization context
+        socket.emit('init', {
+            yourId: socket.id,
+            players: gameState.players,
+            monsters: gameState.monsters
+        });
+
+        // Broadcast presence
+        socket.broadcast.emit('player_joined', player);
+
+        // Commit profile immediately
+        savePlayerProgress(player);
     });
-
-    // Broadcast new player to others
-    socket.broadcast.emit('player_joined', gameState.players[socket.id]);
 
     // Handle real-time Movement input validation
     socket.on('player_move', (data) => {
         const player = gameState.players[socket.id];
         if (!player) return;
 
-        // Authoritative server coordinates validation (clamping to hypothetical bounds)
         player.x = Math.max(0, Math.min(2000, data.x));
         player.y = Math.max(0, Math.min(2000, data.y));
     });
 
-    // Handle Battle request (Clicking a monster creates a secure equation)
+    // Handle Battle request
     socket.on('target_monster', (data) => {
         const player = gameState.players[socket.id];
         const monster = gameState.monsters[data.monsterId];
@@ -168,13 +226,12 @@ io.on('connection', (socket) => {
 
         player.targetMonsterId = monster.id;
         
-        // Generate equation tailored to current level of the player
         const challenge = generateEquation(player.level);
         player.activeChallenge = challenge;
 
-        console.log(`[MATHLAND] Challenge generated for ${player.username}: ${challenge.equation} (Secret Answer: ${challenge.answer})`);
+        console.log(`[MATHLAND] Challenge for ${player.username}: ${challenge.equation} (Secret Answer: ${challenge.answer})`);
 
-        // Emit challenge back to client ONLY (keep secret answer server-side!)
+        // Emit public presentation to client only
         socket.emit('equation_challenge', {
             monsterId: monster.id,
             equation: challenge.equation
@@ -200,7 +257,7 @@ io.on('connection', (socket) => {
             player.xp += xpGained;
             player.gold += goldGained;
 
-            // Check level up (e.g., Level Up at every multiple of 100 XP)
+            // Check level up (100 XP boundaries)
             const oldLevel = player.level;
             player.level = Math.floor(player.xp / 100) + 1;
             const leveledUp = player.level > oldLevel;
@@ -210,18 +267,15 @@ io.on('connection', (socket) => {
                 player.hp = player.maxHp;
             }
 
-            // Damage monster
             if (monster) {
                 monster.hp = Math.max(0, monster.hp - dmg);
                 
-                // If monster is defeated, reset it after a delay
                 if (monster.hp <= 0) {
                     io.emit('chat_message', {
                         sender: "System",
                         message: `🎉 ${player.username} defeated ${monster.name}! (+${xpGained} XP, +${goldGained} Gold)`
                     });
 
-                    // Simple respawn loop
                     setTimeout(() => {
                         monster.hp = monster.maxHp;
                         io.emit('monster_respawned', monster);
@@ -229,11 +283,9 @@ io.on('connection', (socket) => {
                 }
             }
 
-            // Clear challenge on success
             player.activeChallenge = null;
             player.targetMonsterId = null;
 
-            // Report results
             socket.emit('answer_result', {
                 correct: true,
                 damage: dmg,
@@ -244,7 +296,6 @@ io.on('connection', (socket) => {
                 playerState: player
             });
 
-            // Update entire game lobby about the combat action
             io.emit('player_combat_action', {
                 playerId: player.id,
                 monsterId: monster ? monster.id : null,
@@ -252,30 +303,33 @@ io.on('connection', (socket) => {
                 monsterHp: monster ? monster.hp : 0
             });
 
+            // Auto-Save progress upon successful math solutions
+            savePlayerProgress(player);
+
         } else {
-            // Incorrect answer: Monster strikes back!
+            // Incorrect answer
             let incomingDmg = 10 + (monster ? monster.level * 2 : 5);
             player.hp = Math.max(0, player.hp - incomingDmg);
 
             if (player.hp <= 0) {
-                // Defeat punishment: respawn at coordinates
                 player.hp = player.maxHp;
                 player.x = 100;
                 player.y = 100;
-                player.xp = Math.max(0, player.xp - 20); // Lose some XP
+                player.xp = Math.max(0, player.xp - 20); // Penalty
 
                 socket.emit('player_died', {
                     message: "You were mathematically defeated and sent back to spawn! Lose 20 XP."
                 });
             }
 
-            // Keep the active equation open so they can retry or request a new target,
-            // but punish their HP for wrong answer.
             socket.emit('answer_result', {
                 correct: false,
                 damage: incomingDmg,
                 playerState: player
             });
+
+            // Auto-Save progress on failure
+            savePlayerProgress(player);
         }
     });
 
@@ -286,7 +340,7 @@ io.on('connection', (socket) => {
 
         io.emit('chat_message', {
             sender: player.username,
-            message: msg.substring(0, 100) // Sanitize length
+            message: msg.substring(0, 100)
         });
     });
 
@@ -304,13 +358,18 @@ io.on('connection', (socket) => {
         });
 
         io.emit('player_updated', player);
+        savePlayerProgress(player);
     });
 
     // Clean up state on disconnect
     socket.on('disconnect', () => {
-        console.log(`[MATHLAND] Wizard left: ${socket.id}`);
-        delete gameState.players[socket.id];
-        io.emit('player_left', socket.id);
+        const player = gameState.players[socket.id];
+        if (player) {
+            console.log(`[MATHLAND] Wizard left: ${socket.id}`);
+            savePlayerProgress(player); // Commit final details to database.json
+            delete gameState.players[socket.id];
+            io.emit('player_left', socket.id);
+        }
     });
 });
 
@@ -318,13 +377,11 @@ io.on('connection', (socket) => {
 // 4. TICK SYSTEM (Sync positions real-time)
 // ==========================================
 setInterval(() => {
-    // Send lightweight snapshot containing only positions & vital stats of elements
     const snapshot = {
         players: {},
         monsters: {}
     };
 
-    // Construct streamlined players snapshot
     for (const [id, player] of Object.entries(gameState.players)) {
         snapshot.players[id] = {
             id: player.id,
@@ -339,7 +396,6 @@ setInterval(() => {
         };
     }
 
-    // Construct streamlined monsters snapshot
     for (const [id, monster] of Object.entries(gameState.monsters)) {
         snapshot.monsters[id] = {
             id: monster.id,
@@ -348,7 +404,6 @@ setInterval(() => {
         };
     }
 
-    // Broadcast state update to everyone connected
     io.emit('state_update', snapshot);
 
 }, 1000 / TICK_RATE);
