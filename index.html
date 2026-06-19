@@ -118,17 +118,18 @@
             </div>
         </div>
 
-        <!-- Connection IP/Port Setup -->
-        <div class="flex items-center space-x-3 text-xs bg-gray-950 p-1.5 rounded-lg border border-gray-800">
-            <span class="text-gray-500 ml-1">Server:</span>
-            <input type="text" id="serverUrl" value="http://localhost:3000" class="bg-transparent text-gray-200 focus:outline-none w-44 font-mono">
-            <button id="btnConnect" class="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded font-semibold transition-colors">Connect</button>
+        <!-- Connection IP/Port Setup (Active Realm Status) -->
+        <div id="activeServerBadge" class="hidden flex items-center space-x-2.5 text-xs bg-gray-950 px-3.5 py-1.5 rounded-lg border border-gray-800">
+            <div class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+            <span class="text-gray-500">Realm:</span>
+            <span id="activeServerName" class="font-mono text-indigo-400 font-semibold">None</span>
+            <button id="btnSwitchServer" class="text-indigo-400 hover:text-indigo-300 font-bold transition-colors ml-2 border-l border-gray-800 pl-2">Switch</button>
         </div>
 
         <!-- Account / User Profile Badge -->
         <div class="flex items-center space-x-4">
             <div id="userBadge" class="hidden flex items-center space-x-3 bg-gray-950 px-3 py-1.5 rounded-lg border border-gray-800">
-                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></div>
                 <span id="userBadgeName" class="text-sm font-semibold text-gray-300">Not Logged In</span>
                 <button id="btnSignOut" class="text-gray-500 hover:text-red-400 transition-colors text-xs ml-2"><i data-lucide="log-out" class="w-4 h-4"></i></button>
             </div>
@@ -200,6 +201,103 @@
                     <i data-lucide="ghost" class="w-4 h-4"></i>
                     <span>Play as Guest</span>
                 </button>
+            </div>
+        </div>
+
+        <!-- 1.5 MULTIPLAYER SERVER SELECTION SCREEN (Overlay) -->
+        <div id="serverSelectionOverlay" class="hidden absolute inset-0 bg-gray-950/95 flex items-center justify-center z-40 transition-opacity duration-300">
+            <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-2xl w-full shadow-2xl relative overflow-hidden mx-4">
+                <div class="absolute -top-16 -right-16 w-48 h-48 bg-indigo-500/5 rounded-full blur-3xl"></div>
+                <div class="absolute -bottom-16 -left-16 w-48 h-48 bg-purple-500/5 rounded-full blur-3xl"></div>
+
+                <div class="text-center mb-8">
+                    <span class="text-xs uppercase font-bold tracking-widest text-indigo-400 bg-indigo-950/60 border border-indigo-900 px-3 py-1 rounded-full">Multiplayer Gateways</span>
+                    <h2 class="font-cinzel text-3xl font-black text-gray-100 mt-3">CHOOSE YOUR REALM</h2>
+                    <p class="text-gray-400 text-sm mt-1.5">Select a mathematical server to spawn your Wizard avatar.</p>
+                </div>
+
+                <!-- Server Grid List -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                    <!-- Server Card 1 -->
+                    <button class="server-card-btn text-left p-4 bg-gray-950 border border-gray-800 hover:border-indigo-500/50 hover:bg-gray-900/40 rounded-xl transition-all flex justify-between items-center group" data-url="http://localhost:3000" data-name="Pythagoras (Local Dev)">
+                        <div class="flex items-center space-x-3.5">
+                            <div class="p-2.5 rounded-lg bg-indigo-950 text-indigo-400 group-hover:bg-indigo-900/50 transition-colors">
+                                <i data-lucide="server" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-gray-200 text-sm">Realm Pythagoras</h4>
+                                <p class="text-xs text-indigo-400/80 font-mono">localhost:3000</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-900/50">LOCAL</span>
+                            <p class="text-[10px] text-gray-500 mt-1">Ping: 1ms</p>
+                        </div>
+                    </button>
+
+                    <!-- Server Card 2 (Production/Mock) -->
+                    <button class="server-card-btn text-left p-4 bg-gray-950 border border-gray-800 hover:border-indigo-500/50 hover:bg-gray-900/40 rounded-xl transition-all flex justify-between items-center group opacity-85" data-url="https://us-west.mathland.io" data-name="Euclid (US West)">
+                        <div class="flex items-center space-x-3.5">
+                            <div class="p-2.5 rounded-lg bg-purple-950 text-purple-400 group-hover:bg-purple-900/50 transition-colors">
+                                <i data-lucide="globe" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-gray-200 text-sm">Realm Euclid</h4>
+                                <p class="text-xs text-purple-400/80 font-mono">us-west.mathland.io</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-950/80 text-indigo-400 border border-indigo-900/50">NORMAL</span>
+                            <p class="text-[10px] text-gray-500 mt-1">Ping: 32ms</p>
+                        </div>
+                    </button>
+
+                    <!-- Server Card 3 (Production/Mock) -->
+                    <button class="server-card-btn text-left p-4 bg-gray-950 border border-gray-800 hover:border-indigo-500/50 hover:bg-gray-900/40 rounded-xl transition-all flex justify-between items-center group opacity-85" data-url="https://eu.mathland.io" data-name="Hypatia (Europe)">
+                        <div class="flex items-center space-x-3.5">
+                            <div class="p-2.5 rounded-lg bg-emerald-950 text-emerald-400 group-hover:bg-emerald-900/50 transition-colors">
+                                <i data-lucide="swords" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-gray-200 text-sm">Realm Hypatia</h4>
+                                <p class="text-xs text-emerald-400/80 font-mono">eu.mathland.io</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 text-amber-400 border border-amber-900/50">POPULAR</span>
+                            <p class="text-[10px] text-gray-500 mt-1">Ping: 110ms</p>
+                        </div>
+                    </button>
+
+                    <!-- Server Card 4 (Production/Mock - Under Load) -->
+                    <button class="server-card-btn text-left p-4 bg-gray-950 border border-gray-800 hover:border-indigo-500/50 hover:bg-gray-900/40 rounded-xl transition-all flex justify-between items-center group opacity-85" data-url="https://asia.mathland.io" data-name="Noether (Asia Pacific)">
+                        <div class="flex items-center space-x-3.5">
+                            <div class="p-2.5 rounded-lg bg-rose-950 text-rose-400 group-hover:bg-rose-900/50 transition-colors">
+                                <i data-lucide="zap" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-gray-200 text-sm">Realm Noether</h4>
+                                <p class="text-xs text-rose-400/80 font-mono">asia.mathland.io</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950/80 text-rose-400 border border-rose-900/50">CROWDED</span>
+                            <p class="text-[10px] text-gray-500 mt-1">Ping: 195ms</p>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- Custom Portal spell/input -->
+                <div class="p-5 bg-gray-950 rounded-xl border border-gray-800/80">
+                    <h5 class="text-xs uppercase font-bold text-gray-400 mb-3 flex items-center">
+                        <i data-lucide="cable" class="w-4 h-4 mr-2 text-indigo-400"></i>
+                        Open Custom Realm Portal
+                    </h5>
+                    <form id="customServerForm" class="flex flex-col sm:flex-row gap-3">
+                        <input type="text" id="customServerUrl" required value="http://localhost:3000" class="flex-grow bg-gray-900 border border-gray-800 focus:border-indigo-500 rounded-lg px-4 py-2 text-sm text-gray-200 focus:outline-none transition-all font-mono" placeholder="http://127.0.0.1:3000">
+                        <button type="submit" class="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-all shadow-md shadow-indigo-500/10 shrink-0">Enter Gateway</button>
+                    </form>
+                </div>
             </div>
         </div>
 
@@ -396,19 +494,20 @@
         // ==========================================
         // SOCKET.IO CONNECTION MANAGEMENT
         // ==========================================
-        const serverUrlInput = document.getElementById('serverUrl');
-        const btnConnect = document.getElementById('btnConnect');
         const connectionStatus = document.getElementById('connectionStatus');
+        const activeServerBadge = document.getElementById('activeServerBadge');
+        const activeServerName = document.getElementById('activeServerName');
+        const btnSwitchServer = document.getElementById('btnSwitchServer');
+        const serverSelectionOverlay = document.getElementById('serverSelectionOverlay');
 
-        function connectToGameServer() {
-            const url = serverUrlInput.value.trim();
-            
+        function connectToGameServer(url, serverName) {
             if (socket) {
                 socket.disconnect();
             }
 
-            btnConnect.textContent = "Connecting...";
-            btnConnect.className = "bg-amber-600 text-white px-2.5 py-1 rounded font-semibold text-xs";
+            // Show standard in-game server offline/reconnecting indicator while loading
+            connectionStatus.classList.remove('hidden');
+            connectionStatus.querySelector('span').textContent = `Linking to ${serverName}...`;
             
             socket = io(url, {
                 reconnection: true,
@@ -418,10 +517,13 @@
             });
 
             socket.on('connect', () => {
-                console.log("Connected to game server!");
-                btnConnect.textContent = "Connected";
-                btnConnect.className = "bg-emerald-600 text-white px-2.5 py-1 rounded font-semibold text-xs";
+                console.log(`Connected to Mathland server: ${serverName}`);
                 connectionStatus.classList.add('hidden');
+                serverSelectionOverlay.classList.add('hidden');
+                
+                // Show Realm Indicator in top header bar
+                activeServerName.textContent = serverName;
+                activeServerBadge.classList.remove('hidden');
 
                 // If user is already logged in, update username immediately
                 const currentUser = auth.currentUser;
@@ -431,15 +533,13 @@
             });
 
             socket.on('connect_error', () => {
-                btnConnect.textContent = "Connect";
-                btnConnect.className = "bg-red-600 text-white px-2.5 py-1 rounded font-semibold text-xs";
                 connectionStatus.classList.remove('hidden');
+                connectionStatus.querySelector('span').textContent = "Realm Portal unstable. Trying to re-link...";
             });
 
             socket.on('disconnect', () => {
-                btnConnect.textContent = "Connect";
-                btnConnect.className = "bg-gray-700 text-white px-2.5 py-1 rounded font-semibold text-xs";
                 connectionStatus.classList.remove('hidden');
+                connectionStatus.querySelector('span').textContent = "Realm Offline: Link was severed.";
             });
 
             // Handshake Init
@@ -575,7 +675,17 @@
             });
         }
 
-        btnConnect.addEventListener('click', connectToGameServer);
+        // Return to server list from active game
+        btnSwitchServer.addEventListener('click', () => {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+            activeServerBadge.classList.add('hidden');
+            serverSelectionOverlay.classList.remove('hidden');
+            players = {};
+            monsters = {};
+        });
 
         // ==========================================
         // LOCAL GAME STATS INTERFACE
@@ -683,7 +793,10 @@
             signOut(auth);
             if (socket) {
                 socket.disconnect();
+                socket = null;
             }
+            activeServerBadge.classList.add('hidden');
+            serverSelectionOverlay.classList.add('hidden');
         });
 
         // Track Auth status
@@ -697,14 +810,45 @@
                 userBadgeName.textContent = finalName;
                 document.getElementById('playerDisplayName').textContent = finalName;
 
-                // Fire up game connection
-                connectToGameServer();
+                // Instead of auto-connecting, now present the Server Selector gateway!
+                serverSelectionOverlay.classList.remove('hidden');
             } else {
                 // Not logged in
                 authOverlay.classList.remove('pointer-events-none', 'opacity-0');
                 userBadge.classList.add('hidden');
                 userBadgeName.textContent = "Not Logged In";
+                serverSelectionOverlay.classList.add('hidden');
             }
+        });
+
+        // ==========================================
+        // SERVER LIST GATEWAY EVENTS
+        // ==========================================
+        // Event binding for pre-configured server cards
+        document.querySelectorAll('.server-card-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const url = btn.getAttribute('data-url');
+                const name = btn.getAttribute('data-name');
+                connectToGameServer(url, name);
+            });
+        });
+
+        // Custom manual server gateway submission
+        const customServerForm = document.getElementById('customServerForm');
+        customServerForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const rawUrl = document.getElementById('customServerUrl').value.trim();
+            
+            // Generate a clean user label for custom entry
+            let cleanLabel = "Custom Server";
+            try {
+                const parsed = new URL(rawUrl);
+                cleanLabel = parsed.host;
+            } catch (error) {
+                cleanLabel = rawUrl;
+            }
+            
+            connectToGameServer(rawUrl, cleanLabel);
         });
 
         // ==========================================
