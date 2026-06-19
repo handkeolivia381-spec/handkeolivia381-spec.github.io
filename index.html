@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mathland MMORPG - Client</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Socket.io Client -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <!-- Google Fonts for retro math/wizard theme -->
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;700&family=Cinzel:wght@600;900&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+        }
+        .font-cinzel {
+            font-family: 'Cinzel', serif;
+        }
+        .font-mono-fira {
+            font-family: 'Fira Code', monospace;
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #111827;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4b5563;
+        }
+    </style>
+</head>
+<body class="text-gray-100 overflow-hidden h-screen flex flex-col">
+
+    <!-- Web Audio API Sound Generator -->
+    <script>
+        const SoundEffects = {
+            ctx: null,
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            },
+            playCorrect() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(261.63, now); // C4
+                osc.frequency.setValueAtTime(523.25, now + 0.1); // C5
+                
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+                
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.4);
+            },
+            playIncorrect() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, now);
+                osc.frequency.linearRampToValueAtTime(80, now + 0.25);
+                
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.35);
+            },
+            playLevelUp() {
+                this.init();
+                const now = this.ctx.currentTime;
+                const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99, 1046.50];
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, now + (idx * 0.08));
+                    gain.gain.setValueAtTime(0.1, now + (idx * 0.08));
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + (idx * 0.08) + 0.4);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now + (idx * 0.08));
+                    osc.stop(now + (idx * 0.08) + 0.5);
+                });
+            }
+        };
+    </script>
+
+    <!-- Top Navigation / Header -->
+    <header class="bg-gray-900 border-b border-gray-800 px-6 py-3 flex items-center justify-between shrink-0">
+        <div class="flex items-center space-x-3">
+            <div class="bg-indigo-600 p-2 rounded-lg text-white shadow-lg shadow-indigo-500/20">
+                <i data-lucide="binary" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="font-cinzel text-xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">MATHLAND</h1>
+                <p class="text-xs text-gray-400">Multiplayer Algorithmic Battleground</p>
+            </div>
+        </div>
+
+        <!-- Connection IP/Port Setup -->
+        <div class="flex items-center space-x-3 text-xs bg-gray-950 p-1.5 rounded-lg border border-gray-800">
+            <span class="text-gray-500 ml-1">Server:</span>
+            <input type="text" id="serverUrl" value="http://localhost:3000" class="bg-transparent text-gray-200 focus:outline-none w-44 font-mono">
+            <button id="btnConnect" class="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1 rounded font-semibold transition-colors">Connect</button>
+        </div>
+
+        <!-- Account / User Profile Badge -->
+        <div class="flex items-center space-x-4">
+            <div id="userBadge" class="hidden flex items-center space-x-3 bg-gray-950 px-3 py-1.5 rounded-lg border border-gray-800">
+                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
+                <span id="userBadgeName" class="text-sm font-semibold text-gray-300">Not Logged In</span>
+                <button id="btnSignOut" class="text-gray-500 hover:text-red-400 transition-colors text-xs ml-2"><i data-lucide="log-out" class="w-4 h-4"></i></button>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN INTERFACE LAYOUT -->
+    <main class="flex-grow flex overflow-hidden relative">
+
+        <!-- 1. AUTHENTICATION & LOGIN SCREEN (Overlay) -->
+        <div id="authOverlay" class="absolute inset-0 bg-gray-950/95 flex items-center justify-center z-50 transition-opacity duration-300">
+            <div class="bg-gray-900 border border-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl relative overflow-hidden">
+                <div class="absolute -top-16 -right-16 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl"></div>
+                <div class="absolute -bottom-16 -left-16 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl"></div>
+
+                <div class="text-center mb-6">
+                    <h2 class="font-cinzel text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">MATHLAND</h2>
+                    <p class="text-gray-400 text-sm mt-1">Authenticate your Wizard to enter the Realm.</p>
+                </div>
+
+                <!-- Tabs -->
+                <div class="flex border-b border-gray-800 mb-6 text-sm">
+                    <button id="tabLogin" class="flex-1 pb-3 text-center border-b-2 border-indigo-500 font-semibold text-white">Sign In</button>
+                    <button id="tabRegister" class="flex-1 pb-3 text-center border-b-2 border-transparent text-gray-400 hover:text-white transition-colors">Create Spellbook</button>
+                </div>
+
+                <!-- Auth Error Box -->
+                <div id="authError" class="hidden mb-4 p-3 bg-red-950/80 border border-red-900/50 text-red-300 text-xs rounded-lg flex items-center space-x-2">
+                    <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
+                    <span id="authErrorMsg">An error occurred.</span>
+                </div>
+
+                <!-- Fields -->
+                <form id="authForm" class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Wizard Email</label>
+                        <div class="relative">
+                            <i data-lucide="mail" class="absolute left-3 top-2.5 w-4.5 h-4.5 text-gray-500"></i>
+                            <input type="email" id="authEmail" required class="w-full bg-gray-950 border border-gray-800 rounded-lg pl-10 pr-4 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all" placeholder="merlin@mathland.edu">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Runic Password</label>
+                        <div class="relative">
+                            <i data-lucide="key-round" class="absolute left-3 top-2.5 w-4.5 h-4.5 text-gray-500"></i>
+                            <input type="password" id="authPassword" required class="w-full bg-gray-950 border border-gray-800 rounded-lg pl-10 pr-4 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all" placeholder="••••••••">
+                        </div>
+                    </div>
+
+                    <div id="registerNameContainer" class="hidden">
+                        <label class="block text-xs font-semibold uppercase tracking-wider text-gray-400 mb-1">Wizard Name / Nickname</label>
+                        <div class="relative">
+                            <i data-lucide="user" class="absolute left-3 top-2.5 w-4.5 h-4.5 text-gray-500"></i>
+                            <input type="text" id="authUsername" class="w-full bg-gray-950 border border-gray-800 rounded-lg pl-10 pr-4 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all" placeholder="Pythagoras">
+                        </div>
+                    </div>
+
+                    <button type="submit" id="btnSubmitAuth" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-sm shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/35 transition-all">Sign In</button>
+                </form>
+
+                <div class="relative flex py-4 items-center">
+                    <div class="flex-grow border-t border-gray-800"></div>
+                    <span class="flex-shrink mx-4 text-xs text-gray-500">OR</span>
+                    <div class="flex-grow border-t border-gray-800"></div>
+                </div>
+
+                <button id="btnAnonymous" class="w-full py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold rounded-lg text-sm transition-all flex items-center justify-center space-x-2 border border-gray-700/50">
+                    <i data-lucide="ghost" class="w-4 h-4"></i>
+                    <span>Play as Guest</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- 2. SIDEBAR PANEL (Character Stats, Leaderboard, Chat) -->
+        <aside class="w-80 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0 z-10">
+            <!-- Player Health & Magic Stats -->
+            <div class="p-4 border-b border-gray-800 bg-gray-950/40">
+                <div class="flex justify-between items-center mb-1">
+                    <span id="playerDisplayName" class="font-bold text-gray-200">Wandering Wizard</span>
+                    <span id="playerLvlBadge" class="bg-indigo-900/50 border border-indigo-700 text-indigo-300 text-xs px-2 py-0.5 rounded-full font-bold">Lvl 1</span>
+                </div>
+                
+                <!-- HP Bar -->
+                <div class="mb-3">
+                    <div class="flex justify-between text-xs text-red-400 mb-1 font-semibold">
+                        <span>Health Points (HP)</span>
+                        <span id="txtHp">100/100</span>
+                    </div>
+                    <div class="w-full h-2.5 bg-gray-800 rounded-full overflow-hidden">
+                        <div id="barHp" class="h-full bg-gradient-to-r from-red-600 to-rose-500 transition-all duration-300" style="width: 100%"></div>
+                    </div>
+                </div>
+
+                <!-- XP Bar -->
+                <div>
+                    <div class="flex justify-between text-xs text-purple-400 mb-1 font-semibold">
+                        <span>XP Progress</span>
+                        <span id="txtXp">0 / 100</span>
+                    </div>
+                    <div class="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                        <div id="barXp" class="h-full bg-gradient-to-r from-purple-600 to-indigo-500 transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Gold Purse & Stats -->
+                <div class="grid grid-cols-2 gap-2 mt-4">
+                    <div class="bg-gray-900/80 border border-gray-800 p-2 rounded-lg flex items-center space-x-2">
+                        <i data-lucide="coins" class="w-5 h-5 text-yellow-500"></i>
+                        <div>
+                            <p class="text-[10px] uppercase text-gray-500 font-semibold leading-none">Runic Gold</p>
+                            <p id="txtGold" class="text-sm font-bold text-gray-200 mt-0.5">0g</p>
+                        </div>
+                    </div>
+                    <div class="bg-gray-900/80 border border-gray-800 p-2 rounded-lg flex items-center space-x-2">
+                        <i data-lucide="swords" class="w-5 h-5 text-indigo-400"></i>
+                        <div>
+                            <p class="text-[10px] uppercase text-gray-500 font-semibold leading-none">Zone Tier</p>
+                            <p class="text-xs font-bold text-gray-300 mt-0.5">1 - Meadow</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Global / Local Chat Area -->
+            <div class="flex-grow flex flex-col overflow-hidden">
+                <div class="p-3 border-b border-gray-800 bg-gray-950/20 flex justify-between items-center">
+                    <span class="text-xs uppercase font-bold text-gray-400 tracking-wider flex items-center"><i data-lucide="message-square" class="w-3.5 h-3.5 mr-1.5 text-indigo-500"></i>Realm Chat</span>
+                    <span id="connectedPlayersCount" class="text-[10px] text-emerald-400 font-semibold bg-emerald-950/50 border border-emerald-900/50 px-1.5 py-0.5 rounded">0 online</span>
+                </div>
+
+                <!-- Chat Box Messages -->
+                <div id="chatMessages" class="flex-grow overflow-y-auto p-4 space-y-2 text-xs">
+                    <div class="text-indigo-400 italic">Welcome to Mathland! Move your character using WASD or Arrow Keys. Click a monster to challenge it to a math battle!</div>
+                </div>
+
+                <!-- Chat Input Form -->
+                <form id="chatForm" class="p-2 border-t border-gray-800 bg-gray-950">
+                    <div class="relative flex items-center">
+                        <input type="text" id="chatInput" placeholder="Cast a message spell..." autocomplete="off" class="w-full bg-gray-900 border border-gray-800 focus:border-indigo-500 rounded-lg pl-3 pr-10 py-1.5 text-xs text-gray-300 focus:outline-none transition-all">
+                        <button type="submit" class="absolute right-2 text-indigo-500 hover:text-indigo-400"><i data-lucide="send" class="w-4 h-4"></i></button>
+                    </div>
+                </form>
+            </div>
+        </aside>
+
+        <!-- 3. MAIN GAMEPLAY VIEWPORT (Canvas & Overlays) -->
+        <div class="flex-grow flex flex-col relative overflow-hidden bg-gray-950">
+            
+            <!-- Connection Status Box -->
+            <div id="connectionStatus" class="absolute top-4 left-4 z-20 bg-amber-950/90 border border-amber-900 text-amber-300 px-3 py-1.5 rounded-lg text-xs flex items-center space-x-2">
+                <div class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></div>
+                <span>Server Offline: Trying to connect...</span>
+            </div>
+
+            <!-- Canvas Viewport -->
+            <div class="relative w-full h-full" id="canvasContainer">
+                <canvas id="gameCanvas" class="absolute inset-0 block w-full h-full"></canvas>
+            </div>
+
+            <!-- Mobile Controls / Joystick Placeholder -->
+            <div class="absolute bottom-6 left-6 z-20 md:hidden pointer-events-none">
+                <div class="bg-gray-900/60 backdrop-blur border border-gray-800 p-3 rounded-2xl flex flex-col items-center pointer-events-auto">
+                    <p class="text-[10px] text-gray-400 mb-1 font-bold">Tap Screen to Move</p>
+                    <div class="text-xs text-gray-500">Or use keyboard on desktop</div>
+                </div>
+            </div>
+
+            <!-- Math Question overlay popup -->
+            <div id="mathModal" class="hidden absolute inset-0 bg-gray-950/70 backdrop-blur-sm flex items-center justify-center z-30">
+                <div class="bg-gray-900 border border-indigo-500/50 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl shadow-indigo-500/10 text-center relative overflow-hidden">
+                    <div class="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-500 animate-pulse"></div>
+                    
+                    <div class="flex justify-center mb-3 text-indigo-400">
+                        <i data-lucide="sparkles" class="w-8 h-8 animate-spin-slow"></i>
+                    </div>
+
+                    <h3 class="font-cinzel text-lg font-bold text-gray-200">CAST MATH SPELL</h3>
+                    <p class="text-xs text-gray-400 mb-4 mt-0.5">Solve the linear algebra equation to target the beast!</p>
+
+                    <div class="bg-gray-950 border border-gray-800 py-4 px-3 rounded-xl mb-4 text-xl font-mono-fira font-bold text-emerald-400 tracking-wide" id="txtEquation">
+                        5x + 3 = 18
+                    </div>
+
+                    <form id="mathForm" class="space-y-3">
+                        <input type="number" step="any" id="mathAnswerInput" placeholder="Enter solution for x" required class="w-full bg-gray-950 border border-gray-800 rounded-lg py-2.5 px-4 text-center text-lg font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all">
+                        
+                        <div class="flex space-x-2">
+                            <button type="button" id="btnFlee" class="w-1/3 py-2 bg-gray-800 hover:bg-gray-700 text-gray-400 font-semibold rounded-lg text-xs transition-colors">Flee (Esc)</button>
+                            <button type="submit" class="w-2/3 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-lg text-xs transition-all shadow-md shadow-indigo-500/10">Cast Spell (Enter)</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Answer Feedback Banner -->
+            <div id="feedbackBanner" class="hidden absolute top-6 left-1/2 -translate-x-1/2 z-40 px-6 py-3 rounded-xl text-center font-bold text-sm shadow-xl transition-all duration-300 transform scale-95 opacity-0">
+                <p id="feedbackText">Splendid! Target damaged (-24 HP)</p>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- FIREBASE SDKs & LOGIC MODULE -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // Firebase Web App Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDVxcNNmGrFSer05stnh3IT4sIOirPJAxQ",
+            authDomain: "pokipoki-world.firebaseapp.com",
+            databaseURL: "https://pokipoki-world-default-rtdb.firebaseio.com",
+            projectId: "pokipoki-world",
+            storageBucket: "pokipoki-world.firebasestorage.app",
+            messagingSenderId: "206191017514",
+            appId: "1:206191017514:web:0ab28f7788790eec3a4d53",
+            measurementId: "G-M9LNQ5M8RR"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        // ==========================================
+        // GAME CLIENT STATE MANAGEMENT
+        // ==========================================
+        let socket = null;
+        let myId = null;
+        let players = {};
+        let monsters = {};
+        let targetMonsterId = null;
+        let localPlayerInput = { x: 100, y: 100, targetX: 100, targetY: 100 };
+        let activeKeys = {};
+
+        // Canvas Setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvasContainer');
+
+        // Floating combat numbers animation list
+        let floatingTexts = [];
+
+        function resizeCanvas() {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // ==========================================
+        // AUDIO & EFFECTS TRIGGERS
+        // ==========================================
+        function addFloatingText(text, x, y, color) {
+            floatingTexts.push({
+                text: text,
+                x: x,
+                y: y,
+                color: color || '#f43f5e',
+                alpha: 1.0,
+                velocity: -0.8
+            });
+        }
+
+        // ==========================================
+        // SOCKET.IO CONNECTION MANAGEMENT
+        // ==========================================
+        const serverUrlInput = document.getElementById('serverUrl');
+        const btnConnect = document.getElementById('btnConnect');
+        const connectionStatus = document.getElementById('connectionStatus');
+
+        function connectToGameServer() {
+            const url = serverUrlInput.value.trim();
+            
+            if (socket) {
+                socket.disconnect();
+            }
+
+            btnConnect.textContent = "Connecting...";
+            btnConnect.className = "bg-amber-600 text-white px-2.5 py-1 rounded font-semibold text-xs";
+            
+            socket = io(url, {
+                reconnection: true,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                reconnectionAttempts: 10
+            });
+
+            socket.on('connect', () => {
+                console.log("Connected to game server!");
+                btnConnect.textContent = "Connected";
+                btnConnect.className = "bg-emerald-600 text-white px-2.5 py-1 rounded font-semibold text-xs";
+                connectionStatus.classList.add('hidden');
+
+                // If user is already logged in, update username immediately
+                const currentUser = auth.currentUser;
+                if (currentUser) {
+                    socket.emit('set_username', { username: currentUser.displayName || `Wizard_${currentUser.uid.substring(0, 4)}` });
+                }
+            });
+
+            socket.on('connect_error', () => {
+                btnConnect.textContent = "Connect";
+                btnConnect.className = "bg-red-600 text-white px-2.5 py-1 rounded font-semibold text-xs";
+                connectionStatus.classList.remove('hidden');
+            });
+
+            socket.on('disconnect', () => {
+                btnConnect.textContent = "Connect";
+                btnConnect.className = "bg-gray-700 text-white px-2.5 py-1 rounded font-semibold text-xs";
+                connectionStatus.classList.remove('hidden');
+            });
+
+            // Handshake Init
+            socket.on('init', (data) => {
+                myId = data.yourId;
+                players = data.players;
+                monsters = data.monsters;
+                
+                if (players[myId]) {
+                    localPlayerInput.x = players[myId].x;
+                    localPlayerInput.y = players[myId].y;
+                    localPlayerInput.targetX = players[myId].x;
+                    localPlayerInput.targetY = players[myId].y;
+                    updateStatsUI(players[myId]);
+                }
+            });
+
+            // State ticks containing stream coordinates from backend
+            socket.on('state_update', (snapshot) => {
+                // Update player positions
+                for (const [id, snapPlayer] of Object.entries(snapshot.players)) {
+                    if (players[id]) {
+                        // Interpolate coordinates rather than snapping
+                        players[id].x = snapPlayer.x;
+                        players[id].y = snapPlayer.y;
+                        players[id].hp = snapPlayer.hp;
+                        players[id].maxHp = snapPlayer.maxHp;
+                        players[id].level = snapPlayer.level;
+                        players[id].xp = snapPlayer.xp;
+                        players[id].gold = snapPlayer.gold;
+                    } else {
+                        players[id] = snapPlayer;
+                    }
+
+                    if (id === myId) {
+                        updateStatsUI(players[id]);
+                    }
+                }
+
+                // Remove disconnected players
+                for (const id in players) {
+                    if (!snapshot.players[id]) {
+                        delete players[id];
+                    }
+                }
+
+                // Update monster current health
+                for (const [id, snapMonster] of Object.entries(snapshot.monsters)) {
+                    if (monsters[id]) {
+                        monsters[id].hp = snapMonster.hp;
+                        monsters[id].maxHp = snapMonster.maxHp;
+                    }
+                }
+
+                // Count active wizard populations
+                document.getElementById('connectedPlayersCount').textContent = `${Object.keys(players).length} online`;
+            });
+
+            socket.on('player_joined', (player) => {
+                players[player.id] = player;
+                addChatMessage("System", `${player.username} has teleported into the meadow.`);
+            });
+
+            socket.on('player_left', (id) => {
+                if (players[id]) {
+                    addChatMessage("System", `${players[id].username} departed to other dimensions.`);
+                    delete players[id];
+                }
+            });
+
+            socket.on('player_updated', (player) => {
+                if (players[player.id]) {
+                    players[player.id] = player;
+                }
+            });
+
+            socket.on('monster_respawned', (monster) => {
+                if (monsters[monster.id]) {
+                    monsters[monster.id] = monster;
+                }
+            });
+
+            // Combat feedback
+            socket.on('player_combat_action', (data) => {
+                const targetMonster = monsters[data.monsterId];
+                if (targetMonster) {
+                    addFloatingText(`-${data.damage}`, targetMonster.x, targetMonster.y - 20, '#f43f5e');
+                }
+            });
+
+            // Receive formula math puzzle
+            socket.on('equation_challenge', (data) => {
+                targetMonsterId = data.monsterId;
+                document.getElementById('txtEquation').textContent = data.equation;
+                document.getElementById('mathAnswerInput').value = "";
+                document.getElementById('mathModal').classList.remove('hidden');
+                document.getElementById('mathAnswerInput').focus();
+            });
+
+            // Results of casting math spells
+            socket.on('answer_result', (data) => {
+                if (data.correct) {
+                    SoundEffects.playCorrect();
+                    showFeedback(`Correct Spell! Damage dealt: ${data.damage} HP!`, true);
+                    document.getElementById('mathModal').classList.add('hidden');
+                    
+                    if (data.leveledUp) {
+                        SoundEffects.playLevelUp();
+                        showFeedback(`✨ CONGRATULATIONS! Leveled up to ${data.newLevel}! ✨`, true);
+                        addChatMessage("System", `Congratulations! You grew to Level ${data.newLevel}!`);
+                    }
+                } else {
+                    SoundEffects.playIncorrect();
+                    showFeedback(`Spell Fizzled! You suffered ${data.damage} recoil damage.`, false);
+                }
+                
+                if (data.playerState && players[myId]) {
+                    players[myId] = data.playerState;
+                    updateStatsUI(players[myId]);
+                }
+            });
+
+            // Player defeat / Respawn
+            socket.on('player_died', (data) => {
+                SoundEffects.playIncorrect();
+                showFeedback(data.message, false);
+                document.getElementById('mathModal').classList.add('hidden');
+            });
+
+            // Chat Messages
+            socket.on('chat_message', (data) => {
+                addChatMessage(data.sender, data.message);
+            });
+        }
+
+        btnConnect.addEventListener('click', connectToGameServer);
+
+        // ==========================================
+        // LOCAL GAME STATS INTERFACE
+        // ==========================================
+        function updateStatsUI(player) {
+            document.getElementById('playerDisplayName').textContent = player.username;
+            document.getElementById('playerLvlBadge').textContent = `Lvl ${player.level}`;
+            document.getElementById('txtHp').textContent = `${player.hp}/${player.maxHp}`;
+            document.getElementById('txtGold').textContent = `${player.gold}g`;
+            
+            const hpPercent = (player.hp / player.maxHp) * 100;
+            document.getElementById('barHp').style.width = `${Math.max(0, Math.min(100, hpPercent))}%`;
+
+            // Display current XP relative to level boundary (100 XP steps)
+            const currentLevelMinXp = (player.level - 1) * 100;
+            const relativeXp = player.xp - currentLevelMinXp;
+            document.getElementById('txtXp').textContent = `${player.xp} total`;
+            
+            const xpPercent = (relativeXp / 100) * 100;
+            document.getElementById('barXp').style.width = `${Math.max(0, Math.min(100, xpPercent))}%`;
+        }
+
+        // ==========================================
+        // FIREBASE ACCOUNTS & AUTHENTICATION
+        // ==========================================
+        const authOverlay = document.getElementById('authOverlay');
+        const authForm = document.getElementById('authForm');
+        const authEmail = document.getElementById('authEmail');
+        const authPassword = document.getElementById('authPassword');
+        const authUsername = document.getElementById('authUsername');
+        const registerNameContainer = document.getElementById('registerNameContainer');
+        const authError = document.getElementById('authError');
+        const authErrorMsg = document.getElementById('authErrorMsg');
+
+        const tabLogin = document.getElementById('tabLogin');
+        const tabRegister = document.getElementById('tabRegister');
+        const btnSubmitAuth = document.getElementById('btnSubmitAuth');
+        const btnAnonymous = document.getElementById('btnAnonymous');
+        const userBadge = document.getElementById('userBadge');
+        const userBadgeName = document.getElementById('userBadgeName');
+        const btnSignOut = document.getElementById('btnSignOut');
+
+        let isRegisterMode = false;
+
+        // Tab Switching
+        tabLogin.addEventListener('click', () => {
+            isRegisterMode = false;
+            tabLogin.className = "flex-1 pb-3 text-center border-b-2 border-indigo-500 font-semibold text-white";
+            tabRegister.className = "flex-1 pb-3 text-center border-b-2 border-transparent text-gray-400 hover:text-white transition-colors";
+            registerNameContainer.classList.add('hidden');
+            authUsername.removeAttribute('required');
+            btnSubmitAuth.textContent = "Sign In";
+        });
+
+        tabRegister.addEventListener('click', () => {
+            isRegisterMode = true;
+            tabRegister.className = "flex-1 pb-3 text-center border-b-2 border-indigo-500 font-semibold text-white";
+            tabLogin.className = "flex-1 pb-3 text-center border-b-2 border-transparent text-gray-400 hover:text-white transition-colors";
+            registerNameContainer.classList.remove('hidden');
+            authUsername.setAttribute('required', 'true');
+            btnSubmitAuth.textContent = "Create Spellbook";
+        });
+
+        // Form Submit
+        authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            authError.classList.add('hidden');
+            
+            const email = authEmail.value.trim();
+            const password = authPassword.value;
+            const nickname = authUsername.value.trim();
+
+            try {
+                if (isRegisterMode) {
+                    // Create account
+                    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                    await updateProfile(userCredential.user, {
+                        displayName: nickname
+                    });
+                    showFeedback("Wizard created successfully!", true);
+                } else {
+                    // Login
+                    await signInWithEmailAndPassword(auth, email, password);
+                    showFeedback("Welcome back, Master Wizard!", true);
+                }
+            } catch (err) {
+                authErrorMsg.textContent = err.message.replace("Firebase: ", "");
+                authError.classList.remove('hidden');
+            }
+        });
+
+        // Guest / Anonymous Play
+        btnAnonymous.addEventListener('click', async () => {
+            try {
+                await signInAnonymously(auth);
+                showFeedback("Entering Realm as Guest...", true);
+            } catch (err) {
+                authErrorMsg.textContent = err.message;
+                authError.classList.remove('hidden');
+            }
+        });
+
+        // Sign Out
+        btnSignOut.addEventListener('click', () => {
+            signOut(auth);
+            if (socket) {
+                socket.disconnect();
+            }
+        });
+
+        // Track Auth status
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // User logged in!
+                authOverlay.classList.add('pointer-events-none', 'opacity-0');
+                userBadge.classList.remove('hidden');
+                
+                const finalName = user.displayName || `Apprentice_${user.uid.substring(0, 4)}`;
+                userBadgeName.textContent = finalName;
+                document.getElementById('playerDisplayName').textContent = finalName;
+
+                // Fire up game connection
+                connectToGameServer();
+            } else {
+                // Not logged in
+                authOverlay.classList.remove('pointer-events-none', 'opacity-0');
+                userBadge.classList.add('hidden');
+                userBadgeName.textContent = "Not Logged In";
+            }
+        });
+
+        // ==========================================
+        // KEYBOARD CONTROLS & PHYSICS ENGINE
+        // ==========================================
+        window.addEventListener('keydown', (e) => {
+            // Avoid triggers when typing in input components
+            if (document.activeElement.tagName === 'INPUT') return;
+            activeKeys[e.key.toLowerCase()] = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            activeKeys[e.key.toLowerCase()] = false;
+        });
+
+        // Local game ticks tracking
+        let lastUpdateTime = Date.now();
+        const MOVE_SPEED = 0.18; // px per millisecond
+
+        function updateLocalMovement() {
+            if (!myId || !players[myId]) return;
+
+            const now = Date.now();
+            const dt = now - lastUpdateTime;
+            lastUpdateTime = now;
+
+            let player = players[myId];
+            let dx = 0;
+            let dy = 0;
+
+            if (activeKeys['w'] || activeKeys['arrowup']) dy = -1;
+            if (activeKeys['s'] || activeKeys['arrowdown']) dy = 1;
+            if (activeKeys['a'] || activeKeys['arrowleft']) dx = -1;
+            if (activeKeys['d'] || activeKeys['arrowright']) dx = 1;
+
+            if (dx !== 0 || dy !== 0) {
+                // Normalize vector to keep consistent movement rate diagonally
+                const len = Math.sqrt(dx * dx + dy * dy);
+                const stepX = (dx / len) * MOVE_SPEED * dt;
+                const stepY = (dy / len) * MOVE_SPEED * dt;
+
+                // Authoritative client prediction
+                player.x = Math.max(20, Math.min(2000, player.x + stepX));
+                player.y = Math.max(20, Math.min(2000, player.y + stepY));
+
+                // Send coordinates to authoritative server
+                if (socket && socket.connected) {
+                    socket.emit('player_move', { x: player.x, y: player.y });
+                }
+            }
+        }
+
+        // Tap/click viewport to coordinate movement
+        canvas.addEventListener('click', (e) => {
+            if (!myId || !players[myId]) return;
+
+            // Translate click position on responsive canvas relative to viewport translation offsets
+            const rect = canvas.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickY = e.clientY - rect.top;
+
+            // Camera calculations
+            const cameraX = canvas.width / 2 - players[myId].x;
+            const cameraY = canvas.height / 2 - players[myId].y;
+
+            // Target calculations relative to world coords
+            const worldClickX = clickX - cameraX;
+            const worldClickY = clickY - cameraY;
+
+            // Check if player clicked a monster
+            let monsterClicked = null;
+            for (const [id, monster] of Object.entries(monsters)) {
+                const distance = Math.hypot(monster.x - worldClickX, monster.y - worldClickY);
+                if (distance < 45) { // Monster circle click boundary
+                    monsterClicked = monster;
+                    break;
+                }
+            }
+
+            if (monsterClicked) {
+                if (socket && socket.connected) {
+                    socket.emit('target_monster', { monsterId: monsterClicked.id });
+                }
+            } else {
+                // Regular move transition
+                players[myId].x = Math.max(20, Math.min(2000, worldClickX));
+                players[myId].y = Math.max(20, Math.min(2000, worldClickY));
+
+                if (socket && socket.connected) {
+                    socket.emit('player_move', { x: players[myId].x, y: players[myId].y });
+                }
+            }
+        });
+
+        // ==========================================
+        // SUBMIT SOLUTION FORM
+        // ==========================================
+        const mathForm = document.getElementById('mathForm');
+        const mathAnswerInput = document.getElementById('mathAnswerInput');
+        const btnFlee = document.getElementById('btnFlee');
+
+        mathForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const ans = mathAnswerInput.value.trim();
+            if (ans !== "" && socket && socket.connected) {
+                socket.emit('submit_answer', { answer: ans });
+            }
+        });
+
+        btnFlee.addEventListener('click', () => {
+            document.getElementById('mathModal').classList.add('hidden');
+        });
+
+        // Esc key closes challenge modal
+        window.addEventListener('keydown', (e) => {
+            if (e.key === "Escape") {
+                document.getElementById('mathModal').classList.add('hidden');
+            }
+        });
+
+        // ==========================================
+        // RENDER LOOP (HTML5 Canvas Graphics)
+        // ==========================================
+        function drawGrid(cameraX, cameraY) {
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            const gridSize = 80;
+
+            // Calculate boundary start points
+            const startX = Math.floor(-cameraX / gridSize) * gridSize;
+            const startY = Math.floor(-cameraY / gridSize) * gridSize;
+
+            ctx.beginPath();
+            for (let x = startX; x < startX + canvas.width + gridSize; x += gridSize) {
+                ctx.moveTo(x + cameraX, 0);
+                ctx.lineTo(x + cameraX, canvas.height);
+            }
+            for (let y = startY; y < startY + canvas.height + gridSize; y += gridSize) {
+                ctx.moveTo(0, y + cameraY);
+                ctx.lineTo(canvas.width, y + cameraY);
+            }
+            ctx.stroke();
+
+            // Draw level boundary outline
+            ctx.strokeStyle = '#4338ca';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(cameraX, cameraY, 2000, 2000);
+        }
+
+        function drawGame() {
+            // Reset background
+            ctx.fillStyle = '#090d16';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (!myId || !players[myId]) {
+                // Render connecting wait spinner
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '16px "Fira Code", monospace';
+                ctx.textAlign = 'center';
+                ctx.fillText('Searching for magical math land waves...', canvas.width / 2, canvas.height / 2);
+                requestAnimationFrame(drawGame);
+                return;
+            }
+
+            // Camera setup centered smoothly on user coordinates
+            const cameraX = canvas.width / 2 - players[myId].x;
+            const cameraY = canvas.height / 2 - players[myId].y;
+
+            // 1. Draw Ground Guild Grid
+            drawGrid(cameraX, cameraY);
+
+            // 2. Draw Monsters
+            for (const [id, monster] of Object.entries(monsters)) {
+                const screenX = monster.x + cameraX;
+                const screenY = monster.y + cameraY;
+
+                // Check viewport visibility
+                if (screenX < -50 || screenX > canvas.width + 50 || screenY < -50 || screenY > canvas.height + 50) {
+                    continue;
+                }
+
+                // Monster Body design
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, 28, 0, Math.PI * 2);
+                ctx.fillStyle = monster.hp > 0 ? '#1e1b4b' : '#312e81';
+                ctx.fill();
+                ctx.strokeStyle = monster.hp > 0 ? '#6366f1' : '#4f46e5';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // Draw pulsing magical core indicator
+                if (monster.hp > 0) {
+                    ctx.beginPath();
+                    ctx.arc(screenX, screenY, 12 + Math.sin(Date.now() / 150) * 3, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+                    ctx.fill();
+                }
+
+                // Monster HP Bar background outline
+                ctx.fillStyle = '#111827';
+                ctx.fillRect(screenX - 35, screenY - 50, 70, 7);
+                
+                // Active health
+                const hpPercent = monster.hp / monster.maxHp;
+                ctx.fillStyle = '#ef4444';
+                ctx.fillRect(screenX - 35, screenY - 50, 70 * Math.max(0, hpPercent), 7);
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(screenX - 35, screenY - 50, 70, 7);
+
+                // Monster Text Labels
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(monster.name, screenX, screenY - 58);
+                ctx.font = '9px "Fira Code", monospace';
+                ctx.fillText(`Lv.${monster.level} [${monster.hp}HP]`, screenX, screenY - 40);
+            }
+
+            // 3. Draw Players
+            for (const [id, player] of Object.entries(players)) {
+                const screenX = player.x + cameraX;
+                const screenY = player.y + cameraY;
+
+                // Skip render if off viewport
+                if (screenX < -50 || screenX > canvas.width + 50 || screenY < -50 || screenY > canvas.height + 50) {
+                    continue;
+                }
+
+                const isMe = (id === myId);
+
+                // Draw Magic Spell Circle Underneath Local Wizard
+                if (isMe) {
+                    ctx.beginPath();
+                    ctx.arc(screenX, screenY, 32 + Math.sin(Date.now() / 200) * 4, 0, Math.PI * 2);
+                    ctx.strokeStyle = 'rgba(129, 140, 248, 0.35)';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([5, 5]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                // Player character silhouette circle (Runic Wizard shape)
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, 20, 0, Math.PI * 2);
+                ctx.fillStyle = isMe ? '#4f46e5' : '#10b981';
+                ctx.fill();
+                ctx.strokeStyle = isMe ? '#818cf8' : '#34d399';
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+
+                // Wizard hat element
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.moveTo(screenX - 12, screenY - 8);
+                ctx.lineTo(screenX + 12, screenY - 8);
+                ctx.lineTo(screenX, screenY - 32);
+                ctx.closePath();
+                ctx.fillStyle = isMe ? '#312e81' : '#064e3b';
+                ctx.fill();
+                ctx.strokeStyle = isMe ? '#818cf8' : '#34d399';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // Player status plates
+                ctx.fillStyle = '#111827';
+                ctx.fillRect(screenX - 30, screenY - 46, 60, 6);
+                
+                const hpPercent = player.hp / player.maxHp;
+                ctx.fillStyle = '#10b981';
+                ctx.fillRect(screenX - 30, screenY - 46, 60 * Math.max(0, hpPercent), 6);
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1;
+                ctx.strokeRect(screenX - 30, screenY - 46, 60, 6);
+
+                ctx.fillStyle = isMe ? '#e0e7ff' : '#d1fae5';
+                ctx.font = 'bold 11px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(player.username, screenX, screenY + 34);
+
+                ctx.font = 'bold 9px sans-serif';
+                ctx.fillStyle = '#818cf8';
+                ctx.fillText(`Lvl ${player.level}`, screenX, screenY - 54);
+            }
+
+            // 4. Render Floating Battle indicators
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.y += ft.velocity;
+                ft.alpha -= 0.015;
+
+                ctx.fillStyle = ft.color;
+                ctx.font = 'bold 16px "Fira Code", monospace';
+                ctx.textAlign = 'center';
+                ctx.globalAlpha = Math.max(0, ft.alpha);
+                ctx.fillText(ft.text, ft.x + cameraX, ft.y + cameraY);
+                ctx.globalAlpha = 1.0; // Reset canvas transparency global state
+
+                if (ft.alpha <= 0) {
+                    floatingTexts.splice(i, 1);
+                }
+            }
+
+            // Apply movement steps
+            updateLocalMovement();
+
+            requestAnimationFrame(drawGame);
+        }
+
+        // Initialize rendering
+        requestAnimationFrame(drawGame);
+
+        // ==========================================
+        // CHAT WINDOW UTILITIES
+        // ==========================================
+        const chatForm = document.getElementById('chatForm');
+        const chatInput = document.getElementById('chatInput');
+        const chatMessages = document.getElementById('chatMessages');
+
+        function addChatMessage(sender, msg) {
+            const div = document.createElement('div');
+            div.className = 'mb-1 leading-relaxed';
+            
+            if (sender === "System") {
+                div.innerHTML = `<span class="text-indigo-400 font-bold">[System]:</span> <span class="text-indigo-200 italic">${msg}</span>`;
+            } else {
+                div.innerHTML = `<span class="text-gray-400 font-bold">${sender}:</span> <span class="text-gray-200">${msg}</span>`;
+            }
+            
+            chatMessages.appendChild(div);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        chatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const msg = chatInput.value.trim();
+            if (msg !== "" && socket && socket.connected) {
+                socket.emit('send_chat', msg);
+                chatInput.value = "";
+            }
+        });
+
+        // ==========================================
+        // GENERAL UI NOTIFICATION BANNER
+        // ==========================================
+        function showFeedback(text, isSuccess) {
+            const banner = document.getElementById('feedbackBanner');
+            const txt = document.getElementById('feedbackText');
+            
+            txt.textContent = text;
+            
+            if (isSuccess) {
+                banner.className = "absolute top-6 left-1/2 -translate-x-1/2 z-40 px-6 py-3 rounded-xl text-center font-bold text-sm shadow-xl transition-all duration-300 bg-emerald-900/90 border border-emerald-500 text-emerald-200 transform scale-100 opacity-100";
+            } else {
+                banner.className = "absolute top-6 left-1/2 -translate-x-1/2 z-40 px-6 py-3 rounded-xl text-center font-bold text-sm shadow-xl transition-all duration-300 bg-rose-950/90 border border-rose-500 text-rose-200 transform scale-100 opacity-100";
+            }
+
+            setTimeout(() => {
+                banner.classList.add('scale-95', 'opacity-0');
+            }, 3500);
+        }
+
+        // Auto-run Icons initialization
+        lucide.createIcons();
+    </script>
+</body>
+</html>
